@@ -1,0 +1,8 @@
+[
+  {"subj": "Pluton", "rel": "est_une", "obj": "planète"},
+  {"subj": "Pluton", "rel": "orbite", "obj": "Soleil"},
+  {"subj": "Terre", "rel": "est_une", "obj": "planète"},
+  {"subj": "Terre", "rel": "orbite", "obj": "Soleil"},
+  {"subj": "Pluton", "rel": "type", "obj": "Kuiper"},
+  {"subj": "planète", "rel": "super-classe", "obj": "corps_céleste"}
+]
