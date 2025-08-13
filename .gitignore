@@ -1,1 +1,32 @@
-/target
+## Rust
+/target/
+**/*.rs.bk
+**/*.swp
+**/*.swo
+**/*.tmp
+**/*.log
+Cargo.lock
+
+## VSCode
+.vscode/
+
+## OS
+Thumbs.db
+.DS_Store
+ehthumbs.db
+Icon?
+Desktop.ini
+
+## Autres outils
+*.bak
+*.old
+*.orig
+*.rej
+*.sublime-workspace
+*.sublime-project
+
+# Fichiers d'environnement
+.env
+.env.*
+
+doc.md
