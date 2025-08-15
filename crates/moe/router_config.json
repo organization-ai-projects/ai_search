@@ -1,0 +1,14 @@
+{
+  "rules": [
+    { "keyword": "reverse", "experts": ["ReverseExpert"] },
+    { "keyword": "palindrome", "experts": ["PalindromeExpert"] },
+    { "keyword": "count", "experts": ["WordCountExpert"] },
+    { "keyword": "digit", "experts": ["DigitSumExpert"] },
+    { "keyword": "keyword", "experts": ["KeywordExpert"] },
+    { "keyword": "clean", "experts": ["TextCleanerExpert"] },
+    { "keyword": "upper", "experts": ["UppercaseExpert"] },
+    { "keyword": "anagram", "experts": ["AnagramExpert"] },
+    { "keyword": "case", "experts": ["CaseDetectorExpert"] },
+    { "keyword": "slow", "experts": ["SlowExpert"] }
+    ]
+}
