@@ -1,0 +1,7 @@
+{
+  "experts": [
+    { "name": "Majuscules", "kind": "uppercase" },
+    { "name": "Inversion", "kind": "reverse" },
+    { "name": "Lent", "kind": "slow" }
+  ]
+}
