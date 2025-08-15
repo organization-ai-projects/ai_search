@@ -47,6 +47,10 @@ pub enum MoeError {
     EncodeError(String),
     #[error("expert {name} failed: {cause}")]
     ExpertFailed { name: &'static str, cause: String },
+    #[error("no expert selected")]
+    NoExpertSelected,
+    #[error("aggregation failed: {0}")]
+    AggregationFailed(String),
 }
 
 pub struct Encoded(pub Vec<f32>); // alias simple, change plus tard si besoin
@@ -66,15 +70,71 @@ pub enum RouterInput {
 
 /// Contexte partagé (budget, trace, etc.)
 ```rust
+
+/// Stratégie d’agrégation indépendante du router (injection de politique).
+pub trait Aggregator: Send + Sync {
+    fn id(&self) -> &'static str;
+    fn combine(
+        &self,
+        calls: &[(ExpertRef, ExpertOut)],
+        scores: &GateScores
+    ) -> MoeResult<AggregatedOut>;
+}
+
+/// Exemple : agrégateur par défaut (texte/plan/json, pondération simple)
+pub struct DefaultAggregator;
+impl Aggregator for DefaultAggregator {
+    fn id(&self) -> &'static str { "default" }
+    fn combine(
+        &self,
+        calls: &[(ExpertRef, ExpertOut)],
+        scores: &GateScores
+    ) -> MoeResult<AggregatedOut> {
+        // Ex : pondération softmax, sélection du meilleur, fallback None
+        // À adapter selon Value (texte, plan, etc.)
+        if calls.is_empty() {
+            return Err(MoeError::NoExpertSelected);
+        }
+        // Ici, simple : on prend la sortie avec le meilleur score
+        let (best_id, _) = scores.logits.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)).ok_or(MoeError::AggregationFailed("no scores".into()))?;
+        let out = calls.iter().find(|(r,_)| r.id == *best_id).map(|(_,o)| o).ok_or(MoeError::AggregationFailed("no matching output".into()))?;
+        Ok(AggregatedOut {
+            value: out.value.clone(),
+            mix_info: MixMeta {
+                entropy: 0.0, // à calculer
+                topk: calls.len(),
+                lat_total_ms: calls.iter().map(|(_,o)| o.aux.latency_ms).sum(),
+                drop_count: 0,
+                util_by_expert: scores.logits.clone(),
+            },
+        })
+    }
+}
+
 #[async_trait::async_trait]
 pub trait Router: Send + Sync {
     /// Routing/gating sur une entrée générique (Encoded, Raw, etc.)
     fn gate(&self, input: &RouterInput, ctx: &Context) -> MoeResult<GateScores>;
-    fn pick_topk(&self, scores: &GateScores, k: usize) -> MoeResult<Vec<ExpertRef>>;
+    /// Sélectionne les k meilleurs experts, borne et non-vide, sinon erreur explicite.
+    fn pick_topk(&self, scores: &GateScores, k: usize) -> MoeResult<Vec<ExpertRef>> {
+        let n = scores.logits.len();
+        let k = k.min(n).max(1);
+        // Ici, on suppose qu'on a un mapping id->ExpertRef (à adapter selon l'impl)
+        // Placeholder : retourne une erreur si aucun score
+        if n == 0 {
+            return Err(MoeError::NoExpertSelected);
+        }
+        // ... à implémenter dans chaque Router concret ...
+        Err(MoeError::AggregationFailed("pick_topk: impl manquante".into()))
+    }
     /// Appel des experts en parallèle avec timeout/budget (pattern deadline/cancel obligatoire)
     /// Toute implémentation doit garantir le parallélisme et le respect du budget/timeout pour chaque expert.
     async fn call_experts(&self, input: &RouterInput, picks: &[ExpertRef], ctx: &Context) -> MoeResult<Vec<(ExpertRef, ExpertOut)>>;
-    fn aggregate(&self, calls: &[(ExpertRef, ExpertOut)], scores: &GateScores) -> MoeResult<AggregatedOut>;
+    /// Délègue l’agrégation à l’Aggregator associé
+    fn aggregator(&self) -> &dyn Aggregator;
+    fn aggregate(&self, calls: &[(ExpertRef, ExpertOut)], scores: &GateScores) -> MoeResult<AggregatedOut> {
+        self.aggregator().combine(calls, scores)
+    }
     fn train_signal(&mut self, fb: RouterFeedback);
 }
 ```
@@ -99,10 +159,20 @@ pub trait Orchestrator: Send + Sync {
 }
 ```
 ```rust
+
+/// Token d'annulation thread-safe pour propagation du cancel (coopératif, sans lock).
+#[derive(Clone)]
+pub struct CancelToken(pub std::sync::Arc<std::sync::atomic::AtomicBool>);
+impl CancelToken {
+    pub fn cancel(&self) { self.0.store(true, std::sync::atomic::Ordering::SeqCst) }
+    pub fn is_cancelled(&self) -> bool { self.0.load(std::sync::atomic::Ordering::SeqCst) }
+}
+
 pub struct Context {
     pub budget_ms: u64,
     pub deadline_at: std::time::Instant,
     pub trace_id: String,
+    pub cancel: CancelToken,
     // mémoire, kv, etc.
 }
 
@@ -152,7 +222,17 @@ impl ExpertRegistry for MyRegistry {
 */
 ```
 
+```rust
 /// Types auxiliaires référencés dans le pipeline (squelettes minimalistes)
+#[derive(Clone, Debug)]
+pub struct AggregatedOut {
+    /// Sortie unique après agrégation locale du routeur
+    pub value: Value,
+    /// Métadonnées de mélange / télémétrie
+    pub mix_info: MixMeta,
+}
+```
+
 ```rust
 #[derive(Clone, Debug)]
 pub struct ExpertAux {
@@ -333,6 +413,87 @@ Ces ajouts sont progressifs et n’imposent pas de tout changer d’un coup. Ils
 
 **Tout nouveau code ou refactor doit suivre cette convention.**
 
+## Arborescence cible (exemple type « tree »)
+
+
+```
+src/
+    orchestrator/
+        orchestrator_trait.rs         // Trait Orchestrator
+    router/
+        router_trait.rs               // Trait Router
+        aggregator_trait.rs           // Trait Aggregator
+        default_aggregator.rs         // Implémentation DefaultAggregator
+        aggregated_out.rs             // Struct AggregatedOut
+        gate_scores.rs                // Struct GateScores
+        mix_meta.rs                   // Struct MixMeta
+    experts/
+        expert_trait.rs               // Trait Expert
+        expert_registry_trait.rs      // Trait ExpertRegistry
+        expert_ref.rs                 // Struct ExpertRef
+        expert_id.rs                  // Struct ExpertId
+        expert_aux.rs                 // Struct ExpertAux
+        expert_out.rs                 // Struct ExpertOut
+        planning/
+            planner_rules.rs            // Expert symbolique RulePlanner
+        nlp/
+            french_tagger.rs            // Expert métier NLP NlpFrenchTagger
+    base_models/
+        mod.rs
+        neural/
+            mod.rs
+            transformer/
+                mod.rs
+                transformer.rs        // Struct Transformer
+                config.rs             // Struct TransformerConfig
+                block.rs              // Struct TransformerBlock
+            mamba/
+                mod.rs
+                mamba.rs              // Struct Mamba
+                config.rs             // Struct MambaConfig
+                block.rs              // Struct MambaBlock
+        symbolic/
+            mod.rs
+            rules_engine/
+                mod.rs
+                rules_engine.rs       // Struct RulesEngine
+                config.rs             // Struct RulesEngineConfig
+    shared/
+        mod.rs
+        value/
+            mod.rs
+            value.rs              // Enum Value
+            plan.rs               // Struct Plan
+            plan_step.rs          // Struct PlanStep
+            adapters_trait.rs     // Trait ToValue
+            string_to_value.rs    // impl ToValue for String
+            plan_to_value.rs      // impl ToValue for Plan
+        context/
+            mod.rs
+            context.rs            // Struct Context
+            cancel_token.rs       // Struct CancelToken
+        encoding/
+            mod.rs
+            encoder_trait.rs      // Trait Encoder
+            encoded.rs           // Struct Encoded
+        error/
+            mod.rs
+            moe_error.rs          // Enum MoeError
+            moe_result.rs         // Type MoeResult
+        feedback/
+            mod.rs
+            router_feedback.rs    // Struct RouterFeedback
+            orchestration_feedback.rs // Struct OrchestrationFeedback
+        gating/
+            mod.rs
+            gating_policy.rs      // Struct GatingPolicy
+            softmax.rs           // Fonctions softmax_stable, gate_with_policy
+```
+
+> Cette arborescence est exhaustive : chaque struct/enum/trait/adaptateur a son propre fichier, à sa place logique, sans types/ ni regroupement ambigu. À suivre strictement pour toute génération ou refactor.
+
+> Cette arborescence est à valider/adapter selon tes besoins exacts avant toute génération de squelette ou découpage effectif.
+
 
 ---
 
@@ -504,14 +665,14 @@ impl Expert for RulePlanner {
 ### 2) Backend technique (ex : MiniTransformer) et expert métier taggé
 
 ```rust
-// shared/mini_transformer.rs (backend technique, non exposé au routeur)
-pub struct MiniTransformer {
+// base_models/neural/transformer.rs (modèle générique, non exposé au routeur)
+pub struct Transformer {
     pub dim: usize,
     pub layers: usize,
     // poids/params réels dans ton implémentation
 }
 
-impl MiniTransformer {
+impl Transformer {
     pub fn forward_text(&self, prompt: &str) -> String {
         // Stub: dans le vrai code, passe par ton backend (CPU/GPU)
         format!("[gen:{}layers:{}] {}", self.dim, self.layers, prompt)
@@ -520,7 +681,7 @@ impl MiniTransformer {
 
 // experts/nlp/french_tagger.rs (expert métier, exposé au routeur)
 pub struct NlpFrenchTagger {
-    pub model: MiniTransformer,
+    pub model: Transformer,
     // autres params spécifiques
 }
 
@@ -587,31 +748,6 @@ impl ToValue for Plan {
 ```
 
 ---
-
-## F. Mapping fichiers (rappel concis pour Copilot)
-
-```
-src/
-  orchestrator/
-    orchestrator_trait.rs
-  router/
-    router_trait.rs
-    aggregated_out.rs
-    gate_scores.rs
-    mix_meta.rs
-  experts/
-    expert_trait.rs
-    planning/
-      planner_rules.rs
-    nlp/
-      mini_transformer.rs
-  shared/
-    value.rs
-    context.rs
-    expert_aux.rs
-    expert_out.rs
-    tensor_or_struct.rs
-```
 
 > Règle d’or : **1 fichier = 1 struct/enum/trait** (ton standard).
 > Pas de dossier `types/`. Les adapters/traits légers restent proches des consommateurs.
