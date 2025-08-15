@@ -1,2 +1,4 @@
 [workspace]
-members = ["crates/hybrid_moe"]
+members = [
+	"crates/moe_system"
+]
