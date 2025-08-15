@@ -1,0 +1,14 @@
+pub mod anagram;
+pub mod case_detector;
+pub mod config;
+pub mod digit_sum;
+pub mod expert_config;
+pub mod expert_trait;
+pub mod keyword;
+pub mod palindrome;
+pub mod registry_experts;
+pub mod reverse;
+pub mod slow;
+pub mod text_cleaner;
+pub mod uppercase;
+pub mod word_count;
