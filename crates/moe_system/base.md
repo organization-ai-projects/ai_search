@@ -244,6 +244,75 @@ impl ExpertRegistry for MyRegistry {
 ```
 ### 2.10 Types auxiliaires référencés dans le pipeline (squelettes minimalistes)
 ```rust
+/// Value = format commun que *tous* les experts doivent renvoyer.
+/// Garde-le parcimonieux ; ajoute des variantes seulement si nécessaires.
+#[derive(Clone, Debug)]
+pub enum Value {
+    /// Réponses textuelles / rationales
+    Text { schema: u16, data: String },
+    /// Plans symboliques structurés
+    Plan { schema: u16, data: Plan },
+    /// Résultats structurés ad hoc
+    Json { schema: u16, data: serde_json::Value },
+    /// Représentations vectorielles
+    Embedding { schema: u16, data: Vec<f32> },
+    /// Binaire (images compressées, audio, etc.)
+    Bytes { schema: u16, data: Vec<u8> },
+    /// Pour signifier "pas de résultat utile"
+    None,
+}
+
+impl Value {
+    /// Crée une nouvelle valeur textuelle versionnée (variant Text).
+    /// Usage : Value::text(1, "foo")
+    /// - schema : version du format (ex : 1)
+    /// - s : contenu textuel
+    pub fn text(schema: u16, s: impl Into<String>) -> Self {
+        Value::Text { schema, data: s.into() }
+    }
+
+    /// Tente d'extraire une vue (&str) et la version (schema) si self est Text.
+    /// Retourne Some((schema, &str)) ou None si ce n'est pas un texte.
+    /// Usage : if let Some((schema, txt)) = v.as_text() { ... }
+    pub fn as_text(&self) -> Option<(u16, &str)> {
+        if let Value::Text { schema, data } = self {
+            Some((*schema, data.as_str()))
+        } else {
+            None
+        }
+    }
+
+    /// Indique si la valeur est None (pas de résultat utile).
+    pub fn is_none(&self) -> bool { matches!(self, Value::None) }
+}
+
+/// Plan structuré pour la sortie symbolique
+#[derive(Clone, Debug)]
+pub struct Plan {
+    pub goal: String,
+    pub steps: Vec<PlanStep>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PlanStep {
+    pub description: String,
+    pub done: bool,
+}
+
+/// Trait d’adaptation vers Value
+pub trait ToValue {
+    fn to_value(self) -> Value;
+}
+
+impl ToValue for String {
+    fn to_value(self) -> Value { Value::Text(self) }
+}
+
+impl ToValue for Plan {
+    fn to_value(self) -> Value { Value::Plan(self) }
+}
+```
+```rust
 #[derive(Clone, Debug)]
 pub struct AggregatedOut {
     /// Sortie unique après agrégation locale du routeur
@@ -452,63 +521,11 @@ Ces ajouts sont progressifs et n’imposent pas de tout changer d’un coup. Ils
 
 ---
 
-# Annexes pratiques
-
-## Annexe A. `Value` minimal (contrat d’E/S des experts)
-
-```rust
-/// Value = format commun que *tous* les experts doivent renvoyer.
-/// Garde-le parcimonieux ; ajoute des variantes seulement si nécessaires.
-#[derive(Clone, Debug)]
-pub enum Value {
-    /// Réponses textuelles / rationales
-    Text { schema: u16, data: String },
-    /// Plans symboliques structurés
-    Plan { schema: u16, data: Plan },
-    /// Résultats structurés ad hoc
-    Json { schema: u16, data: serde_json::Value },
-    /// Représentations vectorielles
-    Embedding { schema: u16, data: Vec<f32> },
-    /// Binaire (images compressées, audio, etc.)
-    Bytes { schema: u16, data: Vec<u8> },
-    /// Pour signifier "pas de résultat utile"
-    None,
-}
-
-impl Value {
-    /// Crée une nouvelle valeur textuelle versionnée (variant Text).
-    /// Usage : Value::text(1, "foo")
-    /// - schema : version du format (ex : 1)
-    /// - s : contenu textuel
-    pub fn text(schema: u16, s: impl Into<String>) -> Self {
-        Value::Text { schema, data: s.into() }
-    }
-
-    /// Tente d'extraire une vue (&str) et la version (schema) si self est Text.
-    /// Retourne Some((schema, &str)) ou None si ce n'est pas un texte.
-    /// Usage : if let Some((schema, txt)) = v.as_text() { ... }
-    pub fn as_text(&self) -> Option<(u16, &str)> {
-        if let Value::Text { schema, data } = self {
-            Some((*schema, data.as_str()))
-        } else {
-            None
-        }
-    }
-
-    /// Indique si la valeur est None (pas de résultat utile).
-    pub fn is_none(&self) -> bool { matches!(self, Value::None) }
-}
-
-```
-
-> Guideline : le **routeur** doit convertir systématiquement les sorties internes des experts vers `Value` (adaptateurs locaux si besoin).
 
 
----
+# Exemples d’implémentation d’experts (symbolique et neuronal)
 
-## Annexe C. Exemples d’implémentation d’experts (symbolique vs neuronal)
-
-### C.1 Expert symbolique (règles/planification)
+## Expert symbolique (règles/planification)
 
 ```rust
 // experts/planning/planner_rules.rs
@@ -556,9 +573,7 @@ impl Expert for RulePlanner {
 }
 ```
 
-
-
-### C.2 Modèle interne (neuronal, etc.) et expert métier exposé
+## Modèle interne (neuronal, etc.) et expert métier exposé
 
 ```rust
 // base_models/neural/transformer.rs (modèle générique, non exposé au routeur)
@@ -614,53 +629,6 @@ impl Expert for NlpFrenchTagger {
 #### Note :
 
 Cette logique d'encapsulation des composants internes (modèles, moteurs, etc.) s'applique aussi à Orchestrator et Router : ils peuvent être symboliques, neuronaux, hybrides, etc. L’important est d’exposer une interface claire et typée, quel que soit l’agent ou la technologie interne.
-
----
-
-## Annexe D. Adapter côté routeur (optionnel mais pratique)
-
-Si un expert renvoie un type interne, l’adapter localement vers `Value` :
-
-```rust
-pub trait ToValue {
-    fn to_value(self) -> Value;
-}
-```
-```rust
-impl ToValue for String {
-    fn to_value(self) -> Value { Value::Text(self) }
-}
-```
-```rust
-impl ToValue for Plan {
-    fn to_value(self) -> Value { Value::Plan(self) }
-}
-```
-```rust
-#[derive(Clone, Debug)]
-pub struct Plan {
-    pub goal: String,
-    pub steps: Vec<PlanStep>,
-}
-```
-```rust
-#[derive(Clone, Debug)]
-pub struct PlanStep {
-    pub description: String,
-    pub done: bool,
-}
-
-// Usage côté routeur, après appel expert interne :
-// let value: Value = internal_output.to_value();
-```
-
----
-
-> Règle d’or : **1 fichier = 1 struct/enum/trait** (ton standard).
-> Pas de dossier `types/`. Les adapters/traits légers restent proches des consommateurs.
-
----
-
 
 ---
 
