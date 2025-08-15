@@ -1,19 +1,25 @@
+# Architecture Hi-MoE : Pipeline et conventions
+
+## 1. Pipeline général
+```text
 Input → Orchestrateur
-  → choisit le routeur principal (mais ne route pas lui-même)
-  → Routeur_k(Input_encodé)
-      → Top-k experts
-      → Appels experts (parallélisés)
-      → Agrégation locale (pondérée par gates)
-      → Output_k, Meta_k (scores, coûts, latences…)
-  → (Optionnel) Routeur_j en shadow (mêmes étapes, pas visible utilisateur)
-  → Orchestrateur.Synthèse([Output_k, Meta_k], [Shadow_*?])
-  → Réponse finale + Feedback vers routeurs/experts
+    → choisit le routeur principal (mais ne route pas lui-même)
+    → Routeur_k(Input_encodé)
+            → Top-k experts
+            → Appels experts (parallélisés)
+            → Agrégation locale (pondérée par gates)
+            → Output_k, Meta_k (scores, coûts, latences…)
+    → (Optionnel) Routeur_j en shadow (mêmes étapes, pas visible utilisateur)
+    → Orchestrateur.Synthèse([Output_k, Meta_k], [Shadow_*?])
+    → Réponse finale + Feedback vers routeurs/experts
+```
 
+---
 
-Interfaces (pseudo-Rust, orienté traits)
+## 2. Interfaces (pseudo-Rust, orienté traits)
 
-/// Type d'entrée unique pour tous les experts : InputData
-/// Peut contenir du texte, des features, des vecteurs, etc.
+### 2.1 Type d'entrée unique : `InputData`
+Peut contenir du texte, des features, des vecteurs, etc.
 ```rust
 #[derive(Clone, Debug)]
 pub enum InputData {
@@ -33,7 +39,7 @@ impl InputData {
 
 
 
-/// Gestion d'erreur normalisée dans tout le pipeline
+### 2.2 Gestion d'erreur normalisée
 ```rust
 pub type MoeResult<T> = Result<T, MoeError>;
 
@@ -58,8 +64,11 @@ pub struct Encoded(pub Vec<f32>); // alias simple, change plus tard si besoin
 pub trait Encoder: Send + Sync {
     fn encode(&self, x: &InputData) -> MoeResult<Encoded>;
 }
+```
 
-/// Enum d'entrée pour router symbolique, neuronal, hybride…
+### 2.3 Enum d'entrée pour router symbolique, neuronal, hybride…
+
+```rust
 #[derive(Clone, Debug)]
 pub enum RouterInput {
     Encoded(Encoded),
@@ -68,10 +77,26 @@ pub enum RouterInput {
 }
 ```
 
-/// Contexte partagé (budget, trace, etc.)
-```rust
+### 2.4 Contexte partagé (budget, trace, etc.)
 
-/// Stratégie d’agrégation indépendante du router (injection de politique).
+```rust
+/// Contexte partagé pour la gestion du budget, du tracing, etc.
+pub struct Context {
+    pub budget_ms: u64,
+    pub deadline_at: std::time::Instant,
+    pub trace_id: String,
+    pub cancel: CancelToken, // défini en 2.7
+    // mémoire, kv, etc.
+}
+
+pub fn remaining_ms(ctx: &Context) -> Option<u64> {
+    ctx.deadline_at.checked_duration_since(std::time::Instant::now())
+        .map(|d| d.as_millis() as u64)
+}
+```
+
+### 2.5 Stratégie d’agrégation indépendante du router (injection de politique)
+```rust
 pub trait Aggregator: Send + Sync {
     fn id(&self) -> &'static str;
     fn combine(
@@ -139,7 +164,7 @@ pub trait Router: Send + Sync {
 }
 ```
 
-/// Référence thread-safe à un routeur
+### 2.6 Référence thread-safe à un routeur
 ```rust
 pub struct RouterRef {
     pub id: String,
@@ -158,31 +183,26 @@ pub trait Orchestrator: Send + Sync {
     fn feedback(&mut self, fb: OrchestrationFeedback);
 }
 ```
-```rust
 
-/// Token d'annulation thread-safe pour propagation du cancel (coopératif, sans lock).
+### 2.7 Token d'annulation thread-safe pour propagation du cancel (coopératif, sans lock)
+```rust
+/// Token d'annulation thread-safe pour propagation du cancel (coopératif, sans lock)
 #[derive(Clone)]
 pub struct CancelToken(pub std::sync::Arc<std::sync::atomic::AtomicBool>);
 impl CancelToken {
     pub fn cancel(&self) { self.0.store(true, std::sync::atomic::Ordering::SeqCst) }
     pub fn is_cancelled(&self) -> bool { self.0.load(std::sync::atomic::Ordering::SeqCst) }
 }
+```
+```text
+Le token d'annulation (`CancelToken`) permet de propager un signal d'annulation de façon thread-safe et non bloquante à travers tout le pipeline (orchestrateur, routeur, experts). Il s'agit d'un pattern coopératif : chaque composant doit vérifier régulièrement l'état du token (`is_cancelled`) et interrompre proprement ses traitements si besoin (ex : timeout, budget dépassé, shutdown).
 
-pub struct Context {
-    pub budget_ms: u64,
-    pub deadline_at: std::time::Instant,
-    pub trace_id: String,
-    pub cancel: CancelToken,
-    // mémoire, kv, etc.
-}
+Ce mécanisme est essentiel pour garantir le respect des contraintes de budget/latence et éviter les fuites de ressources lors d'une exécution parallèle ou asynchrone.
 
-pub fn remaining_ms(ctx: &Context) -> Option<u64> {
-    ctx.deadline_at.checked_duration_since(std::time::Instant::now())
-        .map(|d| d.as_millis() as u64)
-}
+Voir la section 2.4 pour l'utilisation de CancelToken dans Context et remaining_ms.
 ```
 
-/// Sortie d'un expert
+### 2.8 Sortie d'un expert
 ```rust
 pub struct ExpertOut {
     pub value: Value,          // texte, plan, structure…
@@ -191,7 +211,7 @@ pub struct ExpertOut {
 ```
 
 
-/// Trait unique pour tous les experts (asynchrone, standardisé)
+### 2.9 Trait unique pour tous les experts (asynchrone, standardisé)
 ```rust
 #[async_trait::async_trait]
 pub trait Expert: Send + Sync {
@@ -199,7 +219,8 @@ pub trait Expert: Send + Sync {
     fn can_handle(&self, task: &str) -> bool; // hint symbolique
     async fn infer(&self, x: &InputData, ctx: &Context) -> MoeResult<ExpertOut>;
 }
-
+```
+```rust
 /// Registry déterministe pour la gestion des experts (ExpertId stables, lookup rapide).
 /// Permet d'assurer la stabilité des IDs et la découverte des experts par nom ou id.
 pub trait ExpertRegistry: Send + Sync {
@@ -221,9 +242,8 @@ impl ExpertRegistry for MyRegistry {
 }
 */
 ```
-
+### 2.10 Types auxiliaires référencés dans le pipeline (squelettes minimalistes)
 ```rust
-/// Types auxiliaires référencés dans le pipeline (squelettes minimalistes)
 #[derive(Clone, Debug)]
 pub struct AggregatedOut {
     /// Sortie unique après agrégation locale du routeur
@@ -241,13 +261,15 @@ pub struct ExpertAux {
     pub confidence: f32,
     pub trace_id: Option<String>,
 }
-
+```
+```rust
 #[derive(Clone, Debug)]
 pub struct GateScores {
     // scores/softmax par expert_id
     pub logits: Vec<(ExpertId, f32)>,
 }
-
+```
+```rust
 #[derive(Clone, Debug)]
 pub struct MixMeta {
     pub entropy: f32,
@@ -256,15 +278,19 @@ pub struct MixMeta {
     pub drop_count: usize,
     pub util_by_expert: Vec<(ExpertId, f32)>, // pour load-balance
 }
-
+```
+```rust
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ExpertId(pub u64);
-
+```
+```rust
 #[derive(Clone)]
 pub struct ExpertRef {
     pub id: ExpertId,
     pub handle: std::sync::Arc<dyn Expert>,
 }
+```
+```rust
 /// Politique de gating standard (softmax stable, tie-break, epsilon-greedy)
 #[derive(Clone, Debug)]
 pub struct GatingPolicy {
@@ -299,6 +325,8 @@ pub fn gate_with_policy(
     });
     v
 }
+```
+```rust
 /// Feedback structuré pour l'apprentissage/monitoring
 #[derive(Clone, Debug)]
 pub struct RouterFeedback {
@@ -308,7 +336,8 @@ pub struct RouterFeedback {
     pub entropy_grad: f32,
     pub util_by_expert: Vec<(ExpertId, f32)>, // stats d'usage pour régul.
 }
-
+```
+```rust
 #[derive(Clone, Debug)]
 pub struct OrchestrationFeedback {
     pub trace_id: String,
@@ -318,9 +347,9 @@ pub struct OrchestrationFeedback {
 }
 ```
 
+---
 
-
-Crédit/Apprentissage (sans bypass)
+## 3. Crédit/Apprentissage (sans bypass)
 
 Router.loss = task_loss + λ·load_balance + μ·entropy
 
@@ -335,7 +364,10 @@ Expert.score (symbolique) : reward style bandit (latence/qualité).
 
 Shadow routing : l’orchestrateur compare primary vs shadow (offline credit assignment) → met à jour router.gate et experts sans influencer la réponse utilisateur.
 
-Points clés d’implémentation
+
+---
+
+## 4. Points clés d’implémentation
 
 Jamais de bypass : l’orchestrateur n’appelle pas d’expert directement. Tout passe par un Router.
 
@@ -348,10 +380,12 @@ Hétérogénéité experts : impose un Value commun (p.ex. enum structuré) + un
 Tracing & budget : mets latence/coût dans ExpertAux et MixMeta pour réguler le top-k, stopper tôt, ou re-router si SLA menacé.
 
 
-Boucle d’exécution (résumée)
 
+---
 
+## 5. Boucle d’exécution (résumée)
 
+```rust
 r = orch.choose_router(x)
 
 // À l'appelant de préparer le RouterInput selon le type de router (neuronal : encode, symbolique : raw, etc.)
@@ -370,11 +404,13 @@ agg = r.aggregate(calls, scores)
 y = orch.synthesize((r, agg, meta), shadow?)
 
 orch.feedback(...) → r.train_signal(...) → experts update (sélectionnés)
+```
 
-Métriques/guardrails essentiels
+---
+
+## 6. Métriques/guardrails essentiels
 
 Quality (task-specific), Calibration (confiance vs exactitude), Load balance, Utilisation par expert, Latence, Coût, Stabilité du gating (drift), Contradiction inter-experts (désaccord utile comme signal d’incertitude).
-
 
 ---
 
@@ -398,6 +434,7 @@ Quality (task-specific), Calibration (confiance vs exactitude), Load balance, Ut
 
 Ces ajouts sont progressifs et n’imposent pas de tout changer d’un coup. Ils rendent le système plus robuste sans complexifier l’existant.
 
+---
 
 ---
 
@@ -413,93 +450,11 @@ Ces ajouts sont progressifs et n’imposent pas de tout changer d’un coup. Ils
 
 **Tout nouveau code ou refactor doit suivre cette convention.**
 
-## Arborescence cible (exemple type « tree »)
-
-
-```
-src/
-    orchestrator/
-        orchestrator_trait.rs         // Trait Orchestrator
-    router/
-        router_trait.rs               // Trait Router
-        aggregator_trait.rs           // Trait Aggregator
-        default_aggregator.rs         // Implémentation DefaultAggregator
-        aggregated_out.rs             // Struct AggregatedOut
-        gate_scores.rs                // Struct GateScores
-        mix_meta.rs                   // Struct MixMeta
-    experts/
-        expert_trait.rs               // Trait Expert
-        expert_registry_trait.rs      // Trait ExpertRegistry
-        expert_ref.rs                 // Struct ExpertRef
-        expert_id.rs                  // Struct ExpertId
-        expert_aux.rs                 // Struct ExpertAux
-        expert_out.rs                 // Struct ExpertOut
-        planning/
-            planner_rules.rs            // Expert symbolique RulePlanner
-        nlp/
-            french_tagger.rs            // Expert métier NLP NlpFrenchTagger
-    base_models/
-        mod.rs
-        neural/
-            mod.rs
-            transformer/
-                mod.rs
-                transformer.rs        // Struct Transformer
-                config.rs             // Struct TransformerConfig
-                block.rs              // Struct TransformerBlock
-            mamba/
-                mod.rs
-                mamba.rs              // Struct Mamba
-                config.rs             // Struct MambaConfig
-                block.rs              // Struct MambaBlock
-        symbolic/
-            mod.rs
-            rules_engine/
-                mod.rs
-                rules_engine.rs       // Struct RulesEngine
-                config.rs             // Struct RulesEngineConfig
-    shared/
-        mod.rs
-        value/
-            mod.rs
-            value.rs              // Enum Value
-            plan.rs               // Struct Plan
-            plan_step.rs          // Struct PlanStep
-            adapters_trait.rs     // Trait ToValue
-            string_to_value.rs    // impl ToValue for String
-            plan_to_value.rs      // impl ToValue for Plan
-        context/
-            mod.rs
-            context.rs            // Struct Context
-            cancel_token.rs       // Struct CancelToken
-        encoding/
-            mod.rs
-            encoder_trait.rs      // Trait Encoder
-            encoded.rs           // Struct Encoded
-        error/
-            mod.rs
-            moe_error.rs          // Enum MoeError
-            moe_result.rs         // Type MoeResult
-        feedback/
-            mod.rs
-            router_feedback.rs    // Struct RouterFeedback
-            orchestration_feedback.rs // Struct OrchestrationFeedback
-        gating/
-            mod.rs
-            gating_policy.rs      // Struct GatingPolicy
-            softmax.rs           // Fonctions softmax_stable, gate_with_policy
-```
-
-> Cette arborescence est exhaustive : chaque struct/enum/trait/adaptateur a son propre fichier, à sa place logique, sans types/ ni regroupement ambigu. À suivre strictement pour toute génération ou refactor.
-
-> Cette arborescence est à valider/adapter selon tes besoins exacts avant toute génération de squelette ou découpage effectif.
-
-
 ---
 
 # Annexes pratiques
 
-## A. `Value` minimal (contrat d’E/S des experts)
+## Annexe A. `Value` minimal (contrat d’E/S des experts)
 
 ```rust
 /// Value = format commun que *tous* les experts doivent renvoyer.
@@ -544,76 +499,16 @@ impl Value {
     pub fn is_none(&self) -> bool { matches!(self, Value::None) }
 }
 
-#[derive(Clone, Debug)]
-pub struct Plan {
-    pub goal: String,
-    pub steps: Vec<PlanStep>,
-}
-
-#[derive(Clone, Debug)]
-pub struct PlanStep {
-    pub description: String,
-    pub done: bool,
-}
 ```
 
 > Guideline : le **routeur** doit convertir systématiquement les sorties internes des experts vers `Value` (adaptateurs locaux si besoin).
 
----
-
-## B. Mini flowchart ASCII (exécution Hi-MoE, sans bypass)
-
-```
-+------------------+          +---------------------+
-|      Input       |          |     Orchestrator    |
-|  (InputData + ctx)|--------->| choose_router(x,ctx)|
-+------------------+          +---------+-----------+
-                                         |
-                                         v
-                               +---------+-----------+
-                               |       Router_k      |
-                               |  encode   |
-                               |    ↓      |
-                               |   gate    |
-                               +----+-----------+----+
-                                    |           |
-                           top-k picks           |
-                                    |           |
-                                    v           |
-                           +--------+--------+  |
-                           |  call experts   |  |
-                           | (parallelized)  |  |
-                           +--------+--------+  |
-                                    |           |
-                                    v           v
-                               +----+-----------+----+
-                               |   aggregate (gates) |
-                               | -> AggregatedOut    |
-                               +----+-----------+----+
-                                    |           |
-                                    |     (optional)
-                                    |     Shadow routers ...
-                                    v
-                             +------+-------+
-                             |  Orchestrator|
-                             |   synthesize |
-                             +------+-------+
-                                    |
-                                    v
-                         +----------+-----------+
-                         |  Final answer (Value)|
-                         +----------+-----------+
-                                    |
-                                    v
-                    feedback -> routers/experts (no bypass)
-```
 
 ---
 
+## Annexe C. Exemples d’implémentation d’experts (symbolique vs neuronal)
 
-## C. Exemples d’implémentation d’experts (symbolique vs neuronal)
-
-### 1) Expert symbolique (règles/planification)
+### C.1 Expert symbolique (règles/planification)
 
 ```rust
 // experts/planning/planner_rules.rs
@@ -634,7 +529,8 @@ impl RulePlanner {
         Plan { goal: "Synthesize answer".into(), steps }
     }
 }
-
+```
+```rust
 impl Expert for RulePlanner {
     fn name(&self) -> &'static str { "rule_planner" }
 
@@ -662,7 +558,7 @@ impl Expert for RulePlanner {
 
 
 
-### 2) Backend technique (ex : MiniTransformer) et expert métier taggé
+### C.2 Modèle interne (neuronal, etc.) et expert métier exposé
 
 ```rust
 // base_models/neural/transformer.rs (modèle générique, non exposé au routeur)
@@ -678,7 +574,8 @@ impl Transformer {
         format!("[gen:{}layers:{}] {}", self.dim, self.layers, prompt)
     }
 }
-
+```
+```rust
 // experts/nlp/french_tagger.rs (expert métier, exposé au routeur)
 pub struct NlpFrenchTagger {
     pub model: Transformer,
@@ -710,23 +607,17 @@ impl Expert for NlpFrenchTagger {
 }
 ```
 
-> Seuls les experts métiers (comme NlpFrenchTagger) sont exposés au routeur. Les backends techniques (MiniTransformer, etc.) sont utilisés en interne par les experts, orchestrators ou routers, mais ne sont jamais vus comme des agents autonomes.
+> Seuls les experts métiers (par exemple NlpFrenchTagger) sont exposés directement au routeur via le trait `Expert`. Les modèles (neuronaux, symboliques, etc.) et autres composants internes sont utilisés comme dépendances par les experts, orchestrators ou routers, mais ne sont jamais exposés comme agents autonomes dans le pipeline MoE. Cette séparation garantit une interface claire, typée et stable pour le routage, tout en permettant une composition flexible des briques internes (symboliques, neuronales, hybrides, etc.).
 
 ---
 
-### Note :
+#### Note :
 
-- Cette séparation backend/expert métier s’applique aussi à Orchestrator et Router : ils peuvent être symboliques, neuronaux, hybrides, etc. L’important est d’exposer une interface claire et typée, quel que soit l’agent ou la techno interne.
-
----
-
-### Note :
-
-- Cette séparation backend/expert métier s’applique aussi à Orchestrator et Router : ils peuvent être symboliques, neuronaux, hybrides, etc. L’important est d’exposer une interface claire et typée, quel que soit l’agent ou la techno interne.
+Cette logique d'encapsulation des composants internes (modèles, moteurs, etc.) s'applique aussi à Orchestrator et Router : ils peuvent être symboliques, neuronaux, hybrides, etc. L’important est d’exposer une interface claire et typée, quel que soit l’agent ou la technologie interne.
 
 ---
 
-## D. Adapter côté routeur (optionnel mais pratique)
+## Annexe D. Adapter côté routeur (optionnel mais pratique)
 
 Si un expert renvoie un type interne, l’adapter localement vers `Value` :
 
@@ -734,13 +625,29 @@ Si un expert renvoie un type interne, l’adapter localement vers `Value` :
 pub trait ToValue {
     fn to_value(self) -> Value;
 }
-
+```
+```rust
 impl ToValue for String {
     fn to_value(self) -> Value { Value::Text(self) }
 }
-
+```
+```rust
 impl ToValue for Plan {
     fn to_value(self) -> Value { Value::Plan(self) }
+}
+```
+```rust
+#[derive(Clone, Debug)]
+pub struct Plan {
+    pub goal: String,
+    pub steps: Vec<PlanStep>,
+}
+```
+```rust
+#[derive(Clone, Debug)]
+pub struct PlanStep {
+    pub description: String,
+    pub done: bool,
 }
 
 // Usage côté routeur, après appel expert interne :
@@ -752,13 +659,26 @@ impl ToValue for Plan {
 > Règle d’or : **1 fichier = 1 struct/enum/trait** (ton standard).
 > Pas de dossier `types/`. Les adapters/traits légers restent proches des consommateurs.
 
-
 ---
 
 
+---
+
 # Perfectionnement MoE : patterns avancés (obligatoires)
 
+
 Ces patterns sont à appliquer dès le départ pour garantir la robustesse, la scalabilité et le future-proof du MoE. Ils font partie intégrante du standard du projet.
+
+
+## 1. Séparation stricte des rôles et encapsulation
+
+- Les experts exposés au routeur implémentent le trait `Expert` et sont les seuls visibles pour le pipeline principal.
+- Les modèles, moteurs ou autres composants internes sont utilisés comme dépendances, jamais exposés comme agents autonomes.
+
+## 2. Contrats d’interface explicites et versionnés
+
+- `InputData` : helpers (`as_text`, `from_text`, etc.), type d’entrée unique pour tous les experts.
+- `Value` : variantes claires, possibilité d’évolution via un champ de version.
 
 ## 3. Budget/Deadline guards natifs
 
@@ -778,17 +698,12 @@ Ces patterns sont à appliquer dès le départ pour garantir la robustesse, la s
 ```
 Loggue `utilisation_experts` dans `MixMeta` pour suivre le drift.
 
-## 6. Contrats E/S explicites et versionnés
-
-- `InputData` : helpers (`as_text`, `from_text`, etc.), documenté comme type d’entrée unique pour tous les experts.
-- `Value` : garde les variantes, ajoute un champ optionnel `schema_version: Option<u16>` si tu veux faire évoluer le format.
-
-## 7. Télémetrie minimale (traçabilité)
+## 6. Télémetrie minimale (traçabilité)
 
 - `trace_id` dans `Context`, propagé jusqu’à chaque `ExpertAux`.
 - `MixMeta` : `entropy_gates`, `topk`, `lat_total_ms`, `drop_count` (experts non appelés faute de budget).
 
-## 8. Shadow routing cloisonné
+## 7. Shadow routing cloisonné
 
 - Exécute les shadows après la voie primaire si budget restant > seuil.
 - Feedback “offline” (jamais dans le chemin critique).
