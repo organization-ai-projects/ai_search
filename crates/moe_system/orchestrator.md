@@ -10,7 +10,7 @@ src/
 		mod.rs
 		orchestrator_trait.rs         // Trait Orchestrator
 		orchestration_feedback.rs     // Struct OrchestrationFeedback
-	default_aggregator.rs         // Implémentation DefaultAggregator (orchestrator-local impl)
+	default_synthesizer.rs         // Implémentation DefaultSynthesizer (orchestrator-local impl)
 ```
 
 ## Implémentations et traits de l'orchestrateur (extraits de base.md)
@@ -22,8 +22,8 @@ pub trait Orchestrator: Send + Sync {
 
 	fn synthesize(
 		&self,
-		primary: (&RouterRef, AggregatedOut),
-		shadow: Option<Vec<(&RouterRef, AggregatedOut)>>
+		primary: (&RouterRef, SynthesizedOut),
+		shadow: Option<Vec<(&RouterRef, SynthesizedOut)>>
 	) -> MoeResult<Value>;
 
 	fn feedback(&mut self, fb: OrchestrationFeedback);
@@ -31,26 +31,26 @@ pub trait Orchestrator: Send + Sync {
 ```
 
 ```rust
-//src/orchestrator/default_aggregator.rs
-/// Agrégateur par défaut utilisé par l'Orchestrator pour combiner les sorties des experts
-pub struct DefaultAggregator;
+//src/orchestrator/default_synthesizer.rs
+/// Synthétiseur par défaut utilisé par l'Orchestrator pour synthétiser les sorties des experts
+pub struct DefaultSynthesizer;
 
-impl Aggregator for DefaultAggregator {
+impl Synthesizer for DefaultSynthesizer {
 	fn id(&self) -> &'static str { "default" }
-	fn combine(
+	fn synthesize(
 		&self,
 		calls: &[(ExpertRef, ExpertOut)],
 		scores: &GateScores
-	) -> MoeResult<AggregatedOut> {
+	) -> MoeResult<SynthesizedOut> {
 		if calls.is_empty() {
 			return Err(MoeError::NoExpertSelected);
 		}
 		// Exemple : sélectionne la sortie avec le meilleur score
-		let (best_id, _) = scores.logits.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)).ok_or(MoeError::AggregationFailed("no scores".into()))?;
-		let out = calls.iter().find(|(r,_)| r.id == *best_id).map(|(_,o)| o).ok_or(MoeError::AggregationFailed("no matching output".into()))?;
-		Ok(AggregatedOut {
+		let (best_id, _) = scores.logits.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)).ok_or(MoeError::SynthesisFailed("no scores".into()))?;
+		let out = calls.iter().find(|(r,_)| r.id == *best_id).map(|(_,o)| o).ok_or(MoeError::SynthesisFailed("no matching output".into()))?;
+		Ok(SynthesizedOut {
 			value: out.value.clone(),
-			aggregation_metadata: AggregationMetadata {
+			synthesis_metadata: SynthesisMetadata {
 				entropy: 0.0, // à calculer
 				topk: calls.len(),
 				lat_total_ms: calls.iter().map(|(_,o)| o.aux.latency_ms).sum(),
@@ -75,7 +75,7 @@ pub struct OrchestrationFeedback {
 **Rappel de la convention :**
 - Chaque trait dans un fichier `xxx_trait.rs` (ex : `orchestrator_trait.rs`)
 - Chaque struct/enum dans un fichier dédié (ex : `orchestration_feedback.rs`)
-- Les agrégateurs utilisés par l'Orchestrator (ex : DefaultAggregator) sont définis dans ce dossier.
+- Les synthétiseurs utilisés par l'Orchestrator (ex : DefaultSynthesizer) sont définis dans ce dossier.
 - Pas de types/groupements ambigus : un type = un fichier = un rôle clair
 - Cette organisation permet une navigation claire, une évolutivité maximale et évite les conflits ou la confusion lors de l’ajout de nouvelles fonctionnalités.
 
@@ -83,10 +83,10 @@ pub struct OrchestrationFeedback {
 
 ---
 
-## Exemple d'utilisation de l'agrégateur par défaut dans l'Orchestrator
+## Exemple d'utilisation du synthétiseur par défaut dans l'Orchestrator
 
 ```rust
-let aggregator = DefaultAggregator;
-let agg_result = aggregator.combine(&calls, &scores)?;
-// ... synthèse, feedback, etc.
+let synthesizer = DefaultSynthesizer;
+let synth_result = synthesizer.synthesize(&calls, &scores)?;
+// ... synthèse finale, feedback, etc.
 ```
