@@ -1,22 +1,22 @@
 # Rust AI Search
 
-Ce repository est un workspace Rust multi-crates pour des projets d'IA et d'expérimentation.
+This repository is a Rust multi-crate workspace for AI projects and experimentation.
 
-## Structure du workspace
-- `Cargo.toml` : configuration du workspace et dépendances globales
-- `crates/` : contient toutes les crates du projet
-	- Chaque sous-dossier dans `crates/` est une crate indépendante (ex : `ai_vec_hybrid`, `ai_vm`, `mycelium`, ...)
-	- Chaque crate possède son propre `Cargo.toml` et son dossier `src/`
+## Workspace Structure
+- `Cargo.toml`: workspace configuration and global dependencies
+- `crates/`: contains all project crates
+	- Each subfolder in `crates/` is an independent crate (e.g., `ai_vec_hybrid`, `ai_vm`, `mycelium`, ...)
+	- Each crate has its own `Cargo.toml` and `src/` folder
 
-## Commandes utiles
-- `cargo build` : compiler toutes les crates du workspace
-- `cargo run -p <nom_de_la_crate>` : exécuter la crate spécifiée
-- `cargo test -p <nom_de_la_crate>` : lancer les tests pour une crate
-- `cargo check` : vérifier la compilation sans générer de binaire
+## Useful Commands
+- `cargo build`: build all crates in the workspace
+- `cargo run -p <crate_name>`: run the specified crate
+- `cargo test -p <crate_name>`: run tests for a crate
+- `cargo check`: check compilation without generating a binary
 
-## Prérequis
-- [Rust](https://www.rust-lang.org/tools/install) doit être installé
+## Prerequisites
+- [Rust](https://www.rust-lang.org/tools/install) must be installed
 
 ---
 
-N'hésitez pas à modifier ce fichier pour ajouter des informations spécifiques à chaque crate ou à la documentation globale du workspace.
+Feel free to edit this file to add crate-specific information or global workspace documentation.

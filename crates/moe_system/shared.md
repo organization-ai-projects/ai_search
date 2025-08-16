@@ -94,7 +94,7 @@ impl ToValue for Plan {
 ```
 ```rust
 #[derive(Clone, Debug)]
-pub struct AggregationMetadata {
+pub struct SynthesisMetadata {
     pub entropy: f32,
     pub topk: usize,
     pub lat_total_ms: u64,
@@ -104,23 +104,23 @@ pub struct AggregationMetadata {
 ```
 ```rust
 #[derive(Clone, Debug)]
-pub struct AggregationResult {
-    /// Sortie unique après agrégation locale du routeur
+pub struct SynthesisResult {
+    /// Sortie unique après synthèse locale du routeur
     pub value: Value,
-    /// Métadonnées d'agrégation / télémétrie
-    pub aggregation_metadata: AggregationMetadata,
+    /// Métadonnées de synthèse / télémétrie
+    pub synthesis_metadata: SynthesisMetadata,
 }
 ```
 
-### 2.5 Stratégie d’agrégation indépendante du router (injection de politique)
+### 2.5 Stratégie de synthèse indépendante du router (injection de politique)
 ```rust
-pub trait Aggregator: Send + Sync {
+pub trait Synthesizer: Send + Sync {
     fn id(&self) -> &'static str;
-    fn combine(
+    fn synthesize(
         &self,
         calls: &[(ExpertRef, ExpertOut)],
         scores: &GateScores
-    ) -> MoeResult<AggregatedOut>;
+    ) -> MoeResult<SynthesizedOut>;
 }
 ```
 
@@ -151,8 +151,8 @@ pub enum MoeError {
     ExpertFailed { name: &'static str, cause: String },
     #[error("no expert selected")]
     NoExpertSelected,
-    #[error("aggregation failed: {0}")]
-    AggregationFailed(String),
+    #[error("synthesis failed: {0}")]
+    SynthesisFailed(String),
 }
 ```
 

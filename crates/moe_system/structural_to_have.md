@@ -8,7 +8,7 @@ src/
         mod.rs
         orchestrator_trait.rs         // Trait Orchestrator
         orchestration_feedback.rs     // Struct OrchestrationFeedback
-        default_aggregator.rs         // Implémentation DefaultAggregator (orchestrator-local impl)
+    default_synthesizer.rs         // Implémentation DefaultSynthesizer (orchestrator-local impl)
     router/
         mod.rs
         router_trait.rs               // Trait Router
@@ -61,11 +61,11 @@ src/
             plan_to_value.rs      // impl ToValue for Plan
         outputs/
             mod.rs                 // module outputs
-            aggregation_result.rs  // Struct AggregationResult
-            aggregation_metadata.rs // Struct AggregationMetadata
-        aggregators/
-            mod.rs                 // module aggregators
-            aggregator_trait.rs    // Trait Aggregator (présent ici par choix d'anticipation : permet d'éventuelles stratégies d'agrégation portées par d'autres modules qu'un orchestrateur, ou par des experts spécialisés, pour une architecture future-proof)
+            synthesis_result.rs  // Struct SynthesisResult
+            synthesis_metadata.rs // Struct SynthesisMetadata
+        synthesizers/
+            mod.rs                 // module synthesizers
+            synthesizer_trait.rs    // Trait Synthesizer (présent ici par choix d'anticipation : permet d'éventuelles stratégies de synthèse portées par d'autres modules qu'un orchestrateur, ou par des experts spécialisés, pour une architecture future-proof)
         contexts/
             mod.rs
             context.rs            // Struct Context
