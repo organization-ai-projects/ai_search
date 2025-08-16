@@ -2,15 +2,19 @@
 
 ```
 src/
+    lib.rs                  // Sert uniquement à pub mod ... (pas de logique de bibliothèque)
+    main.rs                 // Point d'entrée du binaire
     orchestrator/
+        mod.rs
         orchestrator_trait.rs         // Trait Orchestrator
+        orchestration_feedback.rs     // Struct OrchestrationFeedback
+        default_aggregator.rs         // Implémentation DefaultAggregator (orchestrator-local impl)
     router/
+        mod.rs
         router_trait.rs               // Trait Router
-        aggregator_trait.rs           // Trait Aggregator
-        default_aggregator.rs         // Implémentation DefaultAggregator
-        aggregated_out.rs             // Struct AggregatedOut
-        gate_scores.rs                // Struct GateScores
-        mix_meta.rs                   // Struct MixMeta
+        router_ref.rs                 // Struct RouterRef (id + handle)
+        router_input.rs               // RouterInput (Encoded | Raw)
+        router_feedback.rs            // Struct RouterFeedback
     experts/
         expert_trait.rs               // Trait Expert
         expert_registry_trait.rs      // Trait ExpertRegistry
@@ -19,9 +23,9 @@ src/
         expert_aux.rs                 // Struct ExpertAux
         expert_out.rs                 // Struct ExpertOut
         planning/
-            planner_rules.rs            // Expert symbolique RulePlanner
+            rule_planner.rs            // Expert symbolique RulePlanner
         nlp/
-            french_tagger.rs            // Expert métier NLP NlpFrenchTagger
+            nlp_french_tagger.rs            // Expert métier NLP NlpFrenchTagger
     base_models/
         mod.rs
         neural/
@@ -44,7 +48,10 @@ src/
                 config.rs             // Struct RulesEngineConfig
     shared/
         mod.rs
-        value/
+        inputs/
+            mod.rs                 // module inputs
+            input_data.rs           // InputData
+        values/
             mod.rs
             value.rs              // Enum Value
             plan.rs               // Struct Plan
@@ -52,26 +59,30 @@ src/
             adapters_trait.rs     // Trait ToValue
             string_to_value.rs    // impl ToValue for String
             plan_to_value.rs      // impl ToValue for Plan
-        context/
+        outputs/
+            mod.rs                 // module outputs
+            aggregation_result.rs  // Struct AggregationResult
+            aggregation_metadata.rs // Struct AggregationMetadata
+        aggregators/
+            mod.rs                 // module aggregators
+            aggregator_trait.rs    // Trait Aggregator (présent ici par choix d'anticipation : permet d'éventuelles stratégies d'agrégation portées par d'autres modules qu'un orchestrateur, ou par des experts spécialisés, pour une architecture future-proof)
+        contexts/
             mod.rs
             context.rs            // Struct Context
             cancel_token.rs       // Struct CancelToken
-        encoding/
+        encodings/
             mod.rs
             encoder_trait.rs      // Trait Encoder
-            encoded.rs           // Struct Encoded
-        error/
+            encoded.rs            // Struct Encoded
+        errors/
             mod.rs
             moe_error.rs          // Enum MoeError
             moe_result.rs         // Type MoeResult
-        feedback/
+        gatings/
             mod.rs
-            router_feedback.rs    // Struct RouterFeedback
-            orchestration_feedback.rs // Struct OrchestrationFeedback
-        gating/
-            mod.rs
+            gate_scores.rs        // Struct GateScores
             gating_policy.rs      // Struct GatingPolicy
-            softmax.rs           // Fonctions softmax_stable, gate_with_policy
+            softmax.rs            // Fonctions softmax_stable, gate_with_policy
 ```
 
 > Cette arborescence est exhaustive : chaque struct/enum/trait/adaptateur a son propre fichier, à sa place logique, sans types/ ni regroupement ambigu. À suivre strictement pour toute génération ou refactor.
