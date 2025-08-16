@@ -16,7 +16,7 @@ src/
 		router_feedback.rs            // Struct RouterFeedback
 ```
 
-> **Note :** L'agrégation n'est plus du ressort du Router. Le Router ne fait que router, sélectionner les experts, collecter leurs sorties et transmettre la liste brute à l'Orchestrator.
+> **Note :** La synthèse n'est plus du ressort du Router. Le Router ne fait que router, sélectionner les experts, collecter leurs sorties et transmettre la liste brute à l'Orchestrator.
 
 
 ## Implémentations et traits du router (nouvelle version)
@@ -65,7 +65,7 @@ pub trait Router: Send + Sync {
 			return Err(MoeError::NoExpertSelected);
 		}
 		// ... à implémenter dans chaque Router concret ...
-		Err(MoeError::AggregationFailed("pick_topk: impl manquante".into()))
+			Err(MoeError::SynthesisFailed("pick_topk: impl manquante".into()))
 	}
 	/// Appel des experts en parallèle avec timeout/budget (pattern deadline/cancel obligatoire)
 	/// Toute implémentation doit garantir le parallélisme et le respect du budget/timeout pour chaque expert.
@@ -74,7 +74,7 @@ pub trait Router: Send + Sync {
 }
 ```
 
-> **Note :** Le trait Router ne propose plus de méthode d'agrégation ni d'Aggregator associé. Toute agrégation est désormais du ressort de l'Orchestrator.
+> **Note :** Le trait Router ne propose plus de méthode de synthèse ni de Synthesizer associé. Toute synthèse est désormais du ressort de l'Orchestrator.
 
 **Rappel de la convention :**
 - Chaque trait dans un fichier `xxx_trait.rs` (ex : `router_trait.rs`)
@@ -92,10 +92,11 @@ pub trait Router: Send + Sync {
 - Il ne fait aucune agrégation ni pondération des résultats.
 - Il peut être spécialisé (par domaine, par type d'entrée, etc.), mais ne décide jamais de la sortie finale.
 
+
 ## Rôle de l'Orchestrator (rappel)
 
-- L'Orchestrator reçoit les sorties de un ou plusieurs routers, applique la logique d'agrégation (pondération, fusion, sélection, etc.) via un Aggregator global ou local, et synthétise la réponse finale.
-- Toute logique d'agrégation, de sélection finale ou de composition multi-router est centralisée ici.
+- L'Orchestrator reçoit les sorties de un ou plusieurs routers, applique la logique de synthèse (sélection, transformation, pondération, fusion, etc.) via un Synthesizer global ou local, et produit la réponse finale.
+- Toute logique de synthèse, de sélection finale ou de composition multi-router est centralisée ici.
 
 ---
 
