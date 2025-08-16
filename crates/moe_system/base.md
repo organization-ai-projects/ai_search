@@ -7,7 +7,7 @@ Input → Orchestrateur
     → Routeur_k(Input_encodé)
             → Top-k experts
             → Appels experts (parallélisés)
-            → Agrégation locale (pondérée par gates)
+            → Synthèse locale (pondérée par gates)
             → Output_k, Meta_k (scores, coûts, latences…)
     → (Optionnel) Routeur_j en shadow (mêmes étapes, pas visible utilisateur)
     → Orchestrateur.Synthèse([Output_k, Meta_k], [Shadow_*?])
@@ -37,13 +37,13 @@ Shadow routing : l’orchestrateur compare primary vs shadow (offline credit ass
 
 Jamais de bypass : l’orchestrateur n’appelle pas d’expert directement. Tout passe par un Router.
 
-Agrégation locale au Routeur : cohérent avec le gating (le routeur connaît ses poids).
+Synthèse locale au Routeur : cohérent avec le gating (le routeur connaît ses poids).
 
 Synthèse finale à l’Orchestrateur : utile si tu enchaînes plusieurs routeurs (multi-étapes) ou si tu combines la sortie primaire avec de la mémoire/contexte/contraintes globales.
 
 Hétérogénéité experts : impose un Value commun (p.ex. enum structuré) + un adapter léger côté routeur pour normaliser (ex : texte ↔ plan symbolique).
 
-Tracing & budget : mets latence/coût dans ExpertAux et AggregationMetadata pour réguler le top-k, stopper tôt, ou re-router si SLA menacé.
+Tracing & budget : mets latence/coût dans ExpertAux et SynthesisMetadata pour réguler le top-k, stopper tôt, ou re-router si SLA menacé.
 
 
 
@@ -63,7 +63,7 @@ scores = r.gate(&router_input, ctx) → topk = r.pick_topk(scores, k)
 
 calls = r.call_experts(&router_input, topk, ctx) (parallèle)
 
-agg = r.aggregate(calls, scores)
+syn = r.synthesize(calls, scores)
 
 (optionnel) répéter 2-5 sur shadow routers
 
@@ -108,7 +108,7 @@ Ces ajouts sont progressifs et n’imposent pas de tout changer d’un coup. Ils
 
 - Chaque grande composante a son dossier dédié : `orchestrator/`, `router/`, `experts/`.
 - Les experts sont organisés par domaine dans des sous-dossiers : par exemple `experts/nlp/`, `experts/vision/`, etc.
-- Chaque struct ou enum est définie dans un fichier qui porte son nom en snake_case : par exemple, la struct `AggregatedOut` va dans `aggregated_out.rs`.
+- Chaque struct ou enum est définie dans un fichier qui porte son nom en snake_case : par exemple, la struct `SynthesizedOut` va dans `synthesized_out.rs`.
 - Chaque trait est défini dans un fichier nommé `xxx_trait.rs` où `xxx` est le nom du trait en snake_case : par exemple, le trait `Orchestrator` va dans `orchestrator_trait.rs`.
 - Cette organisation permet une navigation claire, une évolutivité maximale et évite les conflits ou la confusion lors de l’ajout de nouvelles fonctionnalités.
 
@@ -161,12 +161,12 @@ Ces patterns sont à appliquer dès le départ pour garantir la robustesse, la s
 ```rust
 // Exemple : loss_lb = α * (variance(utilisation_experts) / mean^2)
 ```
-Loggue `utilisation_experts` dans `AggregationMetadata` pour suivre le drift.
+Loggue `utilisation_experts` dans `SynthesisMetadata` pour suivre le drift.
 
 ## 6. Télémetrie minimale (traçabilité)
 
 - `trace_id` dans `Context`, propagé jusqu’à chaque `ExpertAux`.
-- `AggregationMetadata` : `entropy`, `topk`, `lat_total_ms`, `drop_count` (experts non appelés faute de budget).
+- `SynthesisMetadata` : `entropy`, `topk`, `lat_total_ms`, `drop_count` (experts non appelés faute de budget).
 
 ## 7. Shadow routing cloisonné
 
