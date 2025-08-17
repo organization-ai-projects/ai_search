@@ -1,4 +1,4 @@
-use crate::experts::expert_id::ExpertId;
+use crate::{experts::Expert, shared::ExpertId};
 
 #[derive(Clone)]
 pub struct ExpertRef {
