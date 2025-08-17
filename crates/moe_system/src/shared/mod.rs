@@ -6,6 +6,7 @@ pub mod experts;
 pub mod gatings;
 pub mod inputs;
 pub mod outputs;
+pub mod routers;
 pub mod synthesizers;
 pub mod values;
 
@@ -17,5 +18,6 @@ pub use experts::*;
 pub use gatings::*;
 pub use inputs::*;
 pub use outputs::*;
+pub use routers::*;
 pub use synthesizers::*;
 pub use values::*;
