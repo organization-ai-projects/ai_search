@@ -1,10 +1,4 @@
 ```rust
-//src/experts/expert_id.rs
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ExpertId(pub u64);
-```
-
-```rust
 //src/experts/expert_ref.rs
 #[derive(Clone)]
 pub struct ExpertRef {

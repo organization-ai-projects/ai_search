@@ -55,10 +55,9 @@ src/
             mod.rs
             value.rs              // Enum Value
             plan.rs               // Struct Plan
+            string.rs             // Struct String
             plan_step.rs          // Struct PlanStep
-            adapters_trait.rs     // Trait ToValue
-            string_to_value.rs    // impl ToValue for String
-            plan_to_value.rs      // impl ToValue for Plan
+            to_value_trait.rs     // Trait ToValue
         outputs/
             mod.rs                 // module outputs
             synthesis_result.rs  // Struct SynthesisResult
