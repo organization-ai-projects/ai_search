@@ -1,0 +1,17 @@
+[
+  {
+    "entry_kind": "orchestrators",
+    "tags": ["orchestrator", "orchestrators"],
+    "path": "data/orchestrators/index.json"
+  },
+  {
+    "entry_kind": "routers",
+    "tags": ["router", "routers"],
+    "path": "data/routers/index.json"
+  },
+  {
+    "entry_kind": "experts",
+    "tags": ["expert", "experts"],
+    "path": "data/experts/index.json"
+  }
+]
