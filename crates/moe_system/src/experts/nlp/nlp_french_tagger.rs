@@ -1,6 +1,7 @@
 use crate::base_models::neural::transformer::Transformer;
-use crate::experts::{expert_aux::ExpertAux, expert_out::ExpertOut, expert_trait::Expert};
-use crate::shared::{contexts::Context, errors::MoeResult, inputs::InputData, values::Value};
+use crate::experts::Expert;
+use crate::shared::{ExpertAux, ExpertOut};
+use crate::shared::{contexts::Context,inputs::InputData, values::Value};
 
 pub struct NlpFrenchTagger {
     pub model: Transformer,

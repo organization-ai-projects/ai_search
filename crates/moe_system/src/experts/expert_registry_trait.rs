@@ -1,4 +1,4 @@
-use crate::{experts::ExpertRef, shared::ExpertId};
+use crate::shared::{ExpertId, ExpertRef};
 
 pub trait ExpertRegistry: Send + Sync {
     fn list(&self) -> Vec<(ExpertId, &'static str)>;
