@@ -1,18 +1,22 @@
-use super::{
-    quality_judge::{quality_judge_to_action_call, QualityJudge},
-    reviewer::Reviewer,
-    validator::Validator,
-    RoleBehavior, RoleSelector, Roles, Spokesperson, Synthesizer,
-};
+use super::analysis_quality::{analysis_quality_to_action_call, AnalysisQuality};
+use super::quality_judge::quality_judge_to_action_call;
+use super::Roles;
 
-/// Associe un rôle enum à l'appel de l'action correspondante
-pub fn role_enum_to_action_call(role: &Roles, input: &str) -> Box<dyn std::any::Any> {
+/// Dispatch unique, typé, compatible rayon : retourne toujours un String
+pub fn role_enum_to_action_call(role: &Roles, input: &str) -> String {
     match role {
-        Roles::Synthesizer => Synthesizer.process(input),
-        Roles::QualityJudge(judge) => quality_judge_to_action_call(judge.clone(), input),
-        Roles::RoleSelector => RoleSelector.process(input),
-        Roles::Spokesperson => Spokesperson.process(input),
-        Roles::Reviewer(reviewer) => Box::new(reviewer.review(input)),
-        Roles::Validator(validator) => Box::new(validator.validate(input)),
+        Roles::Synthétizer => format!("Synthétisé: {}", input),
+        Roles::QualityJudge(judge) => quality_judge_to_action_call(judge.clone(), input)
+            .downcast::<String>()
+            .ok()
+            .map(|s| *s)
+            .unwrap_or_default(),
+        Roles::AnalysisQuality(aq) => analysis_quality_to_action_call(aq.clone(), input)
+            .downcast::<String>()
+            .ok()
+            .map(|s| *s)
+            .unwrap_or_default(),
+        Roles::RoleSelector => "[RoleSelector: pas d'action]".to_string(),
+        Roles::Spokesperson => format!("Réponse portée: {}", input),
     }
 }

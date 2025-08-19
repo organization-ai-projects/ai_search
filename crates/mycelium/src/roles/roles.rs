@@ -1,7 +1,6 @@
 //contient un enum des rôles pour le système mycélien ia
+use super::analysis_quality::AnalysisQuality;
 use super::quality_judge::QualityJudge;
-use super::reviewer::Reviewer;
-use super::validator::Validator;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -14,8 +13,19 @@ pub enum Roles {
     Synthesizer,
     /// Porte la réponse finale vers l'extérieur ou l'utilisateur
     Spokesperson,
-    /// Tous les rôles reviewer du domaine
-    Reviewer(Reviewer),
-    /// Tous les rôles validator du domaine
-    Validator(Validator),
+    /// Analyse globale de la qualité
+    AnalysisQuality(AnalysisQuality),
+}
+
+impl Roles {
+    /// Retourne les indices d'exécution où ce rôle doit être activé
+    pub fn exec_orders(&self) -> Vec<usize> {
+        match self {
+            Roles::QualityJudge(_) => vec![0, 2], // ex: contrôle avant et après synthèse
+            Roles::Synthesizer => vec![1],
+            Roles::Spokesperson => vec![3],
+            Roles::RoleSelector => vec![99],
+            Roles::AnalysisQuality(_) => vec![4],
+        }
+    }
 }

@@ -1,31 +1,30 @@
-# Patterns d’extension des rôles dans le système
+# Convention d’extension des rôles dans le mycelium
 
-## Ajouter un nouveau rôle (exemple : Reviewer)
+## 1. Un domaine = un dossier + un enum
+Chaque domaine fonctionnel (ex : MonDomaine, AutreDomaine, etc.) a :
+- Un dossier `roles/<domaine>/`
+- Un fichier `roles/<domaine>/<domaine>.rs` avec un enum `<Domaine>` listant les variantes du rôle
+- Un mod.rs qui fait `pub use <domaine>::<Domaine>;`
 
-1. Créer un dossier et un fichier pour le rôle :
-   - `roles/reviewer/reviewer.rs`
-   - `roles/reviewer/mod.rs` avec `pub use reviewer::Reviewer;`
-2. Définir un enum pour le rôle et ses variantes.
-3. Implémenter les méthodes associées (ex : `review`).
-4. Ajouter le module dans `roles/mod.rs` et ré-exporter l’enum avec `pub use`.
-5. Ajouter une variante dans l’enum central `Roles` (ex : `Reviewer(Reviewer)`).
-6. Étendre le router central (`role_enum_to_action_call.rs`) pour dispatcher ce rôle.
-7. Utiliser le rôle dans `main.rs` ou ailleurs via `Roles::Reviewer(Reviewer::...)`.
+## 2. Extension d’un domaine
+Pour ajouter une capacité dans un domaine, il suffit d’ajouter une variante à l’enum du domaine (ex : `MonDomaine::VarianteA`, `MonDomaine::VarianteB`, etc.)
 
-## Exemple de code
+## 3. Ajout d’un nouveau domaine
+1. Créer le dossier et le fichier enum
+2. Ajouter le module dans `roles/mod.rs` et le ré-exporter avec `pub use`
+3. Ajouter une variante dans l’enum central `Roles` : `Roles::MonDomaine(MonDomaine)`
+4. Étendre le dispatch central (ex : `role_enum_to_action_call.rs`) pour router la variante
+
+## 4. Utilisation
+On utilise toujours les rôles via l’enum central `Roles` :
 ```rust
-// Ajout dans l’enum Roles
-Reviewer(Reviewer),
-
-// Dispatch dans le router
-Roles::Reviewer(reviewer) => Box::new(reviewer.review(input)),
-
-// Utilisation
-roles_set.insert(Roles::Reviewer(Reviewer::SimpleReview));
+roles_set.insert(Roles::MonDomaine(MonDomaine::VarianteA));
+roles_set.insert(Roles::AutreDomaine(AutreDomaine::VarianteX));
 ```
 
-## Bonnes pratiques
-- Toujours dériver `Serialize`, `Deserialize`, `Debug`, `Clone`, `PartialEq`, `Eq`, `Hash` sur les enums de rôles.
-- Utiliser `pub use` dans les mod.rs pour une API ergonomique.
-- Documenter chaque rôle et ses variantes.
-- Ajouter des tests unitaires pour chaque rôle et pour le router central.
+## 5. Bonnes pratiques
+- Un seul enum par domaine, pas de doublons
+- Toujours dériver Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash
+- Utiliser pub use dans les mod.rs pour une API ergonomique
+- Documenter chaque domaine et chaque variante
+- Ajouter des tests unitaires pour chaque domaine et pour le dispatch central
