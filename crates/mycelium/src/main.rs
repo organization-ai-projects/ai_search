@@ -1,16 +1,19 @@
 mod agent;
 mod roles;
 
-use uuid::Uuid;
 use std::collections::HashSet;
+use uuid::Uuid;
 
 use crate::roles::QualityJudge;
 use crate::roles::{role_enum_to_action_call::role_enum_to_action_call, Roles};
+use crate::roles::{Reviewer, Validator};
 
 fn main() {
     let mut roles_set = HashSet::new();
     roles_set.insert(Roles::Synthesizer);
     roles_set.insert(Roles::QualityJudge(QualityJudge::EmptyCheck));
+    roles_set.insert(Roles::Reviewer(Reviewer::SimpleReview));
+    roles_set.insert(Roles::Validator(Validator::BasicValidation));
     let agent = agent::Agent {
         id: Uuid::now_v7(),
         name: "SynthBot".to_string(),
