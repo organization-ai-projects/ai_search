@@ -2,10 +2,10 @@ use crate::router::router_feedback::RouterFeedback;
 use crate::router::router_input::RouterInput;
 use crate::shared::contexts::context::Context;
 use crate::shared::errors::moe_result::MoeResult;
-use crate::shared::experts::ExpertId;
 use crate::shared::experts::ExpertOut;
 use crate::shared::experts::ExpertRef;
 use crate::shared::gatings::gate_scores::GateScores;
+use crate::shared::MoeError;
 
 #[async_trait::async_trait]
 pub trait Router: Send + Sync {

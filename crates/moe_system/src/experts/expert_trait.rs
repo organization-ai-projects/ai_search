@@ -1,5 +1,4 @@
-use crate::experts::expert_out::ExpertOut;
-use crate::shared::{contexts::Context, errors::MoeResult, inputs::InputData};
+use crate::shared::{contexts::Context, errors::MoeResult, inputs::InputData, ExpertOut};
 
 #[async_trait::async_trait]
 pub trait Expert: Send + Sync {

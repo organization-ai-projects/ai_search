@@ -3,3 +3,4 @@ pub mod experts;
 pub mod device;
 pub mod orchestrator;
 pub mod router;
+pub mod base_models;

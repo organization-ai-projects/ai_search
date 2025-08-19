@@ -1,5 +1,4 @@
-use crate::shared::encodings::encoded::Encoded;
-use crate::shared::inputs::input_data::InputData;
+use crate::shared::{inputs::input_data::InputData, Encoded};
 
 #[derive(Clone, Debug)]
 pub enum RouterInput {

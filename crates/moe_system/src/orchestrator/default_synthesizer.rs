@@ -3,16 +3,19 @@ use crate::shared::errors::moe_error::MoeError;
 use crate::shared::errors::moe_result::MoeResult;
 use crate::shared::gatings::gate_scores::GateScores;
 use crate::shared::routers::RoutedOutput;
-use crate::shared::synthesizers::synthesizer_trait::Synthesizer;
-use crate::shared::synthesizers::synthesizer_trait::{SynthesisMetadata, SynthesizedOut};
+use crate::shared::synthesizers::{SynthesisMetadata, SynthesisResult, Synthesizer};
 
 pub struct DefaultSynthesizer;
 
-impl Synthesizer for DefaultSynthesizer {
+impl Synthesizer<RoutedOutput, SynthesisResult> for DefaultSynthesizer {
     fn id(&self) -> &'static str {
         "default"
     }
-    fn synthesize(&self, calls: &[RoutedOutput], scores: &GateScores) -> MoeResult<SynthesizedOut> {
+    fn synthesize(
+        &self,
+        calls: &[RoutedOutput],
+        scores: &GateScores,
+    ) -> MoeResult<SynthesisResult> {
         if calls.is_empty() {
             return Err(MoeError::NoExpertSelected);
         }
@@ -26,7 +29,7 @@ impl Synthesizer for DefaultSynthesizer {
             .iter()
             .find(|o| o.expert_id == *best_id)
             .ok_or(MoeError::SynthesisFailed("no matching output".into()))?;
-        Ok(SynthesizedOut {
+        Ok(SynthesisResult {
             value: out.value.clone(),
             synthesis_metadata: SynthesisMetadata {
                 entropy: 0.0, // à calculer
