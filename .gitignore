@@ -30,3 +30,23 @@ Desktop.ini
 .env.*
 
 doc.md
+## Datasets and AI models
+# Datasets
+*.gz
+*.zip
+*.tar
+*.tar.gz
+*.csv
+*.tsv
+*.jsonl
+# AI models
+*.pt
+*.pth
+*.onnx
+*.h5
+*.ckpt
+*.joblib
+*.pkl
+*.sav
+*.tflite
+*.pb
