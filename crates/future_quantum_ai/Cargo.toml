@@ -1,0 +1,14 @@
+[package]
+name = "future_quantum_ai"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+bincode = "1"
+ndarray = { version = "0.15", features = ["serde-1"] }
+rand = "0.8"
+rayon = "1.8"
+blake3 = "1"
+lru = "0.12"
